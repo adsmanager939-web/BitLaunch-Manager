@@ -29,16 +29,18 @@
  * stable, client-safe strings so internal infrastructure is not leaked.
  *
  * ── Persistence ──────────────────────────────────────────────────────────────
- * Sessions are stored in-memory (does not survive server restarts).
- * Persistence to the database is tracked as Task #9.
+ * Sessions are persisted to the PostgreSQL database (@workspace/db).
+ * On startup, any session that was interrupted mid-flight (phase not in
+ * "ready" | "done" | "error") is marked as "error" with a descriptive message.
  */
 
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
 import { generateKeyPairSync, randomUUID } from "crypto";
-import { logger } from "../lib/logger";
+import { eq } from "drizzle-orm";
 import { db, sessionsTable } from "@workspace/db";
-import { and, not, inArray, gte } from "drizzle-orm";
+import { logger } from "../lib/logger";
+import type { SessionPhase } from "@workspace/db";
 
 const BITLAUNCH_API_KEY = process.env.BITLAUNCH_API_KEY;
 const BITLAUNCH_BASE_URL = "https://api.bitlaunch.io/v1";
@@ -48,14 +50,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET;
 
 // ── Session types ─────────────────────────────────────────────────────────────
 
-export type SessionPhase =
-  | "provisioning"
-  | "wg_setup"
-  | "ready"
-  | "ending_wg"
-  | "ending_destroy"
-  | "done"
-  | "error";
+export type { SessionPhase };
 
 export interface Session {
   sessionId: string;
@@ -72,84 +67,177 @@ export interface Session {
   startedAt: string;
 }
 
-// In-memory store keyed by sessionId (UUID). Authoritative at runtime.
-const sessions = new Map<string, Session>();
-
-// ── DB persistence helpers ────────────────────────────────────────────────────
+// ── DB helpers ────────────────────────────────────────────────────────────────
 
 /**
- * Upsert a session to the database. Fire-and-forget: errors are logged but
- * never thrown so in-memory operation is never blocked by a DB hiccup.
+ * Insert a brand-new session row. Throws on failure so the launch route can
+ * abort before any server is provisioned — we must never create an untracked VM.
  */
-function persistSession(session: Session): void {
-  db.insert(sessionsTable)
-    .values({
-      sessionId:   session.sessionId,
-      serverId:    session.serverId,
-      userId:      session.userId,
-      phase:       session.phase,
-      steps:       session.steps,
-      serverIp:    session.serverIp,
-      wgConfig:    session.wgConfig,
-      wgPublicKey: session.wgPublicKey,
-      error:       session.error,
-      startedAt:   session.startedAt,
-      updatedAt:   new Date(),
-    })
-    .onConflictDoUpdate({
-      target: sessionsTable.sessionId,
-      set: {
-        serverId:    session.serverId,
-        phase:       session.phase,
-        steps:       session.steps,
-        serverIp:    session.serverIp,
-        wgConfig:    session.wgConfig,
-        wgPublicKey: session.wgPublicKey,
-        error:       session.error,
-        updatedAt:   new Date(),
-      },
-    })
-    .catch((err: unknown) => {
-      logger.error({ err, sessionId: session.sessionId }, "Failed to persist session to DB");
-    });
+async function insertSession(session: Session): Promise<void> {
+  await db.insert(sessionsTable).values({
+    sessionId: session.sessionId,
+    serverId: session.serverId,
+    userId: session.userId,
+    phase: session.phase,
+    steps: session.steps,
+    serverIp: session.serverIp,
+    wgPublicKey: session.wgPublicKey,
+    wgConfig: session.wgConfig,
+    error: session.error,
+    startedAt: new Date(session.startedAt),
+  });
 }
 
 /**
- * Load active sessions from the database into the in-memory store.
- * Only restores non-terminal sessions started within the last 24 hours to
- * avoid replaying completed or very stale sessions on restart.
+ * Upsert the current session state to the database with up to 3 retry
+ * attempts. Throws after all retries are exhausted so the orchestrator can
+ * run compensating cleanup rather than silently continuing with stale state
+ * in the DB (which could leave an untracked VM after a restart).
  *
- * Called once at server startup from index.ts.
+ * Call as `saveSession(s).catch(() => {})` inside error-handler branches
+ * where a further throw would mask the original failure.
+ */
+async function saveSession(session: Session): Promise<void> {
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAY_MS = 500;
+  let lastErr: unknown;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await db
+        .insert(sessionsTable)
+        .values({
+          sessionId: session.sessionId,
+          serverId: session.serverId,
+          userId: session.userId,
+          phase: session.phase,
+          steps: session.steps,
+          serverIp: session.serverIp,
+          wgPublicKey: session.wgPublicKey,
+          wgConfig: session.wgConfig,
+          error: session.error,
+          startedAt: new Date(session.startedAt),
+        })
+        .onConflictDoUpdate({
+          target: sessionsTable.sessionId,
+          set: {
+            serverId: session.serverId,
+            phase: session.phase,
+            steps: session.steps,
+            serverIp: session.serverIp,
+            wgPublicKey: session.wgPublicKey,
+            wgConfig: session.wgConfig,
+            error: session.error,
+          },
+        });
+      return; // success
+    } catch (err) {
+      lastErr = err;
+      logger.warn(
+        { err, sessionId: session.sessionId, attempt, maxAttempts: MAX_ATTEMPTS },
+        "Session save failed — will retry",
+      );
+      if (attempt < MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+      }
+    }
+  }
+
+  logger.error(
+    { err: lastErr, sessionId: session.sessionId },
+    "Session save failed after all retries — propagating to orchestrator",
+  );
+  throw lastErr;
+}
+
+/** Load a session by its UUID. Returns undefined if not found. */
+async function loadSession(sessionId: string): Promise<Session | undefined> {
+  const rows = await db
+    .select()
+    .from(sessionsTable)
+    .where(eq(sessionsTable.sessionId, sessionId))
+    .limit(1);
+  if (rows.length === 0) return undefined;
+  return rowToSession(rows[0]);
+}
+
+/** Find the first session whose serverId matches. Returns undefined if none. */
+async function loadSessionByServerId(serverId: string): Promise<Session | undefined> {
+  const rows = await db
+    .select()
+    .from(sessionsTable)
+    .where(eq(sessionsTable.serverId, serverId))
+    .limit(1);
+  if (rows.length === 0) return undefined;
+  return rowToSession(rows[0]);
+}
+
+function rowToSession(row: typeof sessionsTable.$inferSelect): Session {
+  return {
+    sessionId: row.sessionId,
+    serverId: row.serverId ?? null,
+    userId: row.userId,
+    phase: row.phase,
+    steps: (row.steps as string[]) ?? [],
+    serverIp: row.serverIp ?? null,
+    wgConfig: row.wgConfig ?? null,
+    wgPublicKey: row.wgPublicKey ?? null,
+    error: row.error ?? null,
+    startedAt: row.startedAt.toISOString(),
+  };
+}
+
+/**
+ * Called once at startup, before the HTTP listener opens.
+ *
+ * Every non-terminal session in the DB is orphaned: when this process starts,
+ * no orchestrator is running them (the previous process died and in-memory
+ * state was lost). Mark them all as "error" so operators can see they need
+ * attention and no VM is silently left running without a tracked session.
+ *
+ * This is conservative by design. In a rolling deploy the new instance marks
+ * sessions that were in-flight on the old instance. That is the correct
+ * behaviour — without a distributed lease there is no safe way to distinguish
+ * "owned by a peer" from "truly abandoned", so we always report the honest
+ * truth: this process does not own them and cannot complete them.
  */
 export async function initSessionStore(): Promise<void> {
+  const TERMINAL: SessionPhase[] = ["ready", "done", "error"];
+
   try {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const rows = await db
-      .select()
-      .from(sessionsTable)
-      .where(
-        and(
-          not(inArray(sessionsTable.phase, ["done", "error"])),
-          gte(sessionsTable.startedAt, cutoff),
-        ),
+    const rows = await db.select().from(sessionsTable);
+    const interrupted = rows.filter((r) => !TERMINAL.includes(r.phase));
+    if (interrupted.length === 0) return;
+
+    logger.warn(
+      { count: interrupted.length },
+      "Non-terminal sessions found at startup — marking as error (orphaned by previous process)",
+    );
+
+    for (const row of interrupted) {
+      await db
+        .update(sessionsTable)
+        .set({
+          phase: "error",
+          error:
+            "Session was interrupted by a server restart. " +
+            `It was in phase "${row.phase}" at the time. ` +
+            (row.serverId
+              ? `Server ${row.serverId} may still be running and should be destroyed manually.`
+              : "No server was created before the restart."),
+          steps: [...((row.steps as string[]) ?? []), "interrupted_by_restart"],
+        })
+        .where(eq(sessionsTable.sessionId, row.sessionId));
+
+      logger.info(
+        { sessionId: row.sessionId, phase: row.phase, serverId: row.serverId },
+        "Marked interrupted session as error",
       );
-    for (const row of rows) {
-      sessions.set(row.sessionId, {
-        sessionId:   row.sessionId,
-        serverId:    row.serverId ?? null,
-        userId:      row.userId,
-        phase:       row.phase as SessionPhase,
-        steps:       (row.steps as string[]) ?? [],
-        serverIp:    row.serverIp ?? null,
-        wgConfig:    row.wgConfig ?? null,
-        wgPublicKey: row.wgPublicKey ?? null,
-        error:       row.error ?? null,
-        startedAt:   row.startedAt,
-      });
     }
-    logger.info({ count: rows.length }, "Session store initialised from database");
   } catch (err) {
-    logger.error({ err }, "Failed to load sessions from DB; starting with empty in-memory store");
+    // Log but do not block startup — a DB hiccup must not prevent the server
+    // from accepting requests entirely.
+    logger.error({ err }, "initSessionStore: failed to recover interrupted sessions");
   }
 }
 
@@ -329,6 +417,8 @@ async function runLaunch(
 
     // 1. Create BitLaunch server
     session.phase = "provisioning";
+    await saveSession(session);
+
     const raw = (await blFetch("/servers", "POST", {
       name: body.serverName,
       image: body.snapshotId,
@@ -339,18 +429,19 @@ async function runLaunch(
 
     session.serverId = String(raw.id ?? "");
     session.steps.push(`server_created`);
-    // Persist now: if the server restarts before the session is ready,
-    // the serverId must be known so a cleanup (End Session) is possible.
-    persistSession(session);
+    await saveSession(session);
 
     // 2. Poll until active
     const ready = await pollUntilActive(session.serverId);
     session.serverIp = String(ready.ip ?? ready.ipv4 ?? ready.ip_address ?? "");
     session.steps.push("server_active");
+    await saveSession(session);
 
     // 3. WireGuard peer registration (optional — skipped if env vars absent)
     if (WG_SERVER_HOST && WG_SERVER_API_KEY) {
       session.phase = "wg_setup";
+      await saveSession(session);
+
       const { privateKey, publicKey } = generateWgKeypair();
       session.wgPublicKey = publicKey;
 
@@ -375,8 +466,10 @@ async function runLaunch(
         String(peer.assigned_ip ?? peer.assignedIp ?? ""),
       );
       session.steps.push("wg_registered");
+      await saveSession(session);
     } else {
       session.steps.push("wg_skipped:not_configured");
+      await saveSession(session);
     }
 
     // NOTE: File sync to the VM is not performed here.
@@ -386,7 +479,7 @@ async function runLaunch(
 
     session.phase = "ready";
     session.steps.push("session_ready");
-    persistSession(session);
+    await saveSession(session);
   } catch (err) {
     // Log full error server-side; store only a stable string in the session.
     logger.error({ err, sessionId: session.sessionId }, "Session launch failed");
@@ -418,7 +511,11 @@ async function runLaunch(
     } else {
       session.error = "Session launch failed — check server logs for details";
     }
-    persistSession(session);
+    // Best-effort: we are already in an error path; swallow a further DB
+    // failure rather than masking the original error with a second throw.
+    await saveSession(session).catch((saveErr) => {
+      logger.error({ saveErr, sessionId: session.sessionId }, "Could not persist error state after launch failure");
+    });
   }
 }
 
@@ -430,6 +527,8 @@ async function runEnd(session: Session, serverId: string): Promise<void> {
 
     // 1. Revoke WireGuard peer (optional)
     session.phase = "ending_wg";
+    await saveSession(session);
+
     if (WG_SERVER_HOST && WG_SERVER_API_KEY && session.wgPublicKey) {
       const encodedKey = encodeURIComponent(session.wgPublicKey);
       const res = await fetch(`${WG_SERVER_HOST}/peers/${encodedKey}`, {
@@ -443,19 +542,25 @@ async function runEnd(session: Session, serverId: string): Promise<void> {
     } else {
       session.steps.push("wg_revoke_skipped:not_configured");
     }
+    await saveSession(session);
 
     // 2. Destroy BitLaunch server
     session.phase = "ending_destroy";
+    await saveSession(session);
+
     await blFetch(`/servers/${serverId}`, "DELETE");
     session.steps.push("server_destroyed");
     session.phase = "done";
-    persistSession(session);
+    await saveSession(session);
   } catch (err) {
     logger.error({ err, sessionId: session.sessionId }, "Session end failed");
     session.phase = "error";
     session.error = "Session teardown failed — check server logs for details";
     session.steps.push("teardown_failed");
-    persistSession(session);
+    // Best-effort: already in error path; swallow a further DB failure.
+    await saveSession(session).catch((saveErr) => {
+      logger.error({ saveErr, sessionId: session.sessionId }, "Could not persist error state after teardown failure");
+    });
   }
 }
 
@@ -493,9 +598,10 @@ router.post("/sessions/auth", (req, res): void => {
 
   if (!SESSION_SECRET) {
     // No secret configured. Allow login only when the explicit dev bypass is active.
-    const isDevBypassEnabled =
-      process.env.NODE_ENV !== "production" &&
-      process.env.ALLOW_UNAUTH_SESSIONS === "true";
+  const isDevBypassEnabled =
+    !SESSION_SECRET &&
+    process.env.NODE_ENV !== "production" &&
+    process.env.ALLOW_UNAUTH_SESSIONS === "true";
     if (!isDevBypassEnabled) {
       res.status(503).json({
         error:
@@ -583,8 +689,18 @@ router.post("/sessions/launch", requireSessionAuth, async (req, res): Promise<vo
     error: null,
     startedAt: new Date().toISOString(),
   };
-  sessions.set(sessionId, session);
-  persistSession(session); // Record immediately so sessionId is durable on restart
+
+  // Persist before firing — throws if the DB is unavailable so we never
+  // create an untracked server.
+  try {
+    await insertSession(session);
+  } catch (err) {
+    logger.error({ err, sessionId }, "Failed to create session record — aborting launch");
+    res.status(500).json({
+      error: "Failed to create session record — database unavailable",
+    });
+    return;
+  }
 
   // Fire-and-forget — client polls /status
   runLaunch(session, body.data).catch(() => {});
@@ -598,13 +714,13 @@ router.post("/sessions/launch", requireSessionAuth, async (req, res): Promise<vo
  * private-key config; restrict to authenticated operators.
  * Poll until phase === "ready" | "done" | "error".
  */
-router.get("/sessions/:sessionId/status", requireSessionAuth, (req, res): void => {
+router.get("/sessions/:sessionId/status", requireSessionAuth, async (req, res): Promise<void> => {
   const params = SessionIdParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "sessionId must be a UUID" });
     return;
   }
-  const session = sessions.get(params.data.sessionId);
+  const session = await loadSession(params.data.sessionId);
   if (!session) {
     res.status(404).json({ error: "Session not found" });
     return;
@@ -641,7 +757,7 @@ router.post("/sessions/:serverId/end", requireSessionAuth, async (req, res): Pro
   // This check runs before the BITLAUNCH_API_KEY guard so that callers
   // get a clear 404 (unknown server) rather than a 500 (misconfiguration)
   // when the session isn't tracked.
-  const session = [...sessions.values()].find((s) => s.serverId === serverId);
+  const session = await loadSessionByServerId(serverId);
   if (!session) {
     res.status(404).json({
       error: "No active session found for this server. Only servers launched through Launch Session can be ended here.",

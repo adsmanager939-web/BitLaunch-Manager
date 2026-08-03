@@ -16,9 +16,8 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-// Restore active sessions from the database before accepting requests.
-// Failures are logged and non-fatal — the server still starts with an
-// empty in-memory store in the unlikely event the DB is unreachable.
+// Mark any orphaned sessions from the previous process as error before
+// accepting new requests. Failures are logged but non-fatal.
 await initSessionStore();
 
 app.listen(port, (err) => {

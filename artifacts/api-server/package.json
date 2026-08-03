@@ -8,7 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "SESSION_SECRET=test-secret node --import tsx --test src/routes/sessions.test.ts && env -u SESSION_SECRET env -u ALLOW_UNAUTH_SESSIONS node --import tsx --test src/routes/sessions.no-secret.test.ts && SESSION_SECRET=test-secret BITLAUNCH_API_KEY=test-bl-key node --import tsx --test src/routes/sessions.payload.test.ts && SESSION_SECRET=test-secret BITLAUNCH_API_KEY=test-bl-key WG_SERVER_HOST=http://wg.internal WG_SERVER_API_KEY=test-wg node --import tsx --test src/routes/sessions.cleanup.test.ts"
+    "test": "SESSION_SECRET=test-secret node --import tsx --test src/routes/sessions.test.ts && env -u SESSION_SECRET env -u ALLOW_UNAUTH_SESSIONS node --import tsx --test src/routes/sessions.no-secret.test.ts && SESSION_SECRET=test-secret BITLAUNCH_API_KEY=test-bl-key node --import tsx --test src/routes/sessions.payload.test.ts && SESSION_SECRET=test-secret BITLAUNCH_API_KEY=test-bl-key WG_SERVER_HOST=http://wg.internal WG_SERVER_API_KEY=test-wg node --import tsx --test src/routes/sessions.cleanup.test.ts && SESSION_SECRET=test-secret BITLAUNCH_API_KEY=test-bl-key node --import tsx --test src/routes/sessions.persistence.test.ts"
   },
   "dependencies": {
     "@workspace/api-zod": "workspace:*",
