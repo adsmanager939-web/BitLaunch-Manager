@@ -37,6 +37,8 @@ import { Router, type IRouter, type Request, type Response, type NextFunction } 
 import { z } from "zod";
 import { generateKeyPairSync, randomUUID } from "crypto";
 import { logger } from "../lib/logger";
+import { db, sessionsTable } from "@workspace/db";
+import { and, not, inArray, gte } from "drizzle-orm";
 
 const BITLAUNCH_API_KEY = process.env.BITLAUNCH_API_KEY;
 const BITLAUNCH_BASE_URL = "https://api.bitlaunch.io/v1";
@@ -70,8 +72,86 @@ export interface Session {
   startedAt: string;
 }
 
-// In-memory store keyed by sessionId (UUID)
+// In-memory store keyed by sessionId (UUID). Authoritative at runtime.
 const sessions = new Map<string, Session>();
+
+// ── DB persistence helpers ────────────────────────────────────────────────────
+
+/**
+ * Upsert a session to the database. Fire-and-forget: errors are logged but
+ * never thrown so in-memory operation is never blocked by a DB hiccup.
+ */
+function persistSession(session: Session): void {
+  db.insert(sessionsTable)
+    .values({
+      sessionId:   session.sessionId,
+      serverId:    session.serverId,
+      userId:      session.userId,
+      phase:       session.phase,
+      steps:       session.steps,
+      serverIp:    session.serverIp,
+      wgConfig:    session.wgConfig,
+      wgPublicKey: session.wgPublicKey,
+      error:       session.error,
+      startedAt:   session.startedAt,
+      updatedAt:   new Date(),
+    })
+    .onConflictDoUpdate({
+      target: sessionsTable.sessionId,
+      set: {
+        serverId:    session.serverId,
+        phase:       session.phase,
+        steps:       session.steps,
+        serverIp:    session.serverIp,
+        wgConfig:    session.wgConfig,
+        wgPublicKey: session.wgPublicKey,
+        error:       session.error,
+        updatedAt:   new Date(),
+      },
+    })
+    .catch((err: unknown) => {
+      logger.error({ err, sessionId: session.sessionId }, "Failed to persist session to DB");
+    });
+}
+
+/**
+ * Load active sessions from the database into the in-memory store.
+ * Only restores non-terminal sessions started within the last 24 hours to
+ * avoid replaying completed or very stale sessions on restart.
+ *
+ * Called once at server startup from index.ts.
+ */
+export async function initSessionStore(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const rows = await db
+      .select()
+      .from(sessionsTable)
+      .where(
+        and(
+          not(inArray(sessionsTable.phase, ["done", "error"])),
+          gte(sessionsTable.startedAt, cutoff),
+        ),
+      );
+    for (const row of rows) {
+      sessions.set(row.sessionId, {
+        sessionId:   row.sessionId,
+        serverId:    row.serverId ?? null,
+        userId:      row.userId,
+        phase:       row.phase as SessionPhase,
+        steps:       (row.steps as string[]) ?? [],
+        serverIp:    row.serverIp ?? null,
+        wgConfig:    row.wgConfig ?? null,
+        wgPublicKey: row.wgPublicKey ?? null,
+        error:       row.error ?? null,
+        startedAt:   row.startedAt,
+      });
+    }
+    logger.info({ count: rows.length }, "Session store initialised from database");
+  } catch (err) {
+    logger.error({ err }, "Failed to load sessions from DB; starting with empty in-memory store");
+  }
+}
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 
@@ -259,6 +339,9 @@ async function runLaunch(
 
     session.serverId = String(raw.id ?? "");
     session.steps.push(`server_created`);
+    // Persist now: if the server restarts before the session is ready,
+    // the serverId must be known so a cleanup (End Session) is possible.
+    persistSession(session);
 
     // 2. Poll until active
     const ready = await pollUntilActive(session.serverId);
@@ -303,6 +386,7 @@ async function runLaunch(
 
     session.phase = "ready";
     session.steps.push("session_ready");
+    persistSession(session);
   } catch (err) {
     // Log full error server-side; store only a stable string in the session.
     logger.error({ err, sessionId: session.sessionId }, "Session launch failed");
@@ -334,6 +418,7 @@ async function runLaunch(
     } else {
       session.error = "Session launch failed — check server logs for details";
     }
+    persistSession(session);
   }
 }
 
@@ -364,11 +449,13 @@ async function runEnd(session: Session, serverId: string): Promise<void> {
     await blFetch(`/servers/${serverId}`, "DELETE");
     session.steps.push("server_destroyed");
     session.phase = "done";
+    persistSession(session);
   } catch (err) {
     logger.error({ err, sessionId: session.sessionId }, "Session end failed");
     session.phase = "error";
     session.error = "Session teardown failed — check server logs for details";
     session.steps.push("teardown_failed");
+    persistSession(session);
   }
 }
 
@@ -497,6 +584,7 @@ router.post("/sessions/launch", requireSessionAuth, async (req, res): Promise<vo
     startedAt: new Date().toISOString(),
   };
   sessions.set(sessionId, session);
+  persistSession(session); // Record immediately so sessionId is durable on restart
 
   // Fire-and-forget — client polls /status
   runLaunch(session, body.data).catch(() => {});

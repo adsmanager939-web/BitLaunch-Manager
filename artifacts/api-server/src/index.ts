@@ -1,5 +1,6 @@
-import app from "./app";
-import { logger } from "./lib/logger";
+import app from "./app.js";
+import { logger } from "./lib/logger.js";
+import { initSessionStore } from "./routes/sessions.js";
 
 const rawPort = process.env["PORT"];
 
@@ -14,6 +15,11 @@ const port = Number(rawPort);
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+// Restore active sessions from the database before accepting requests.
+// Failures are logged and non-fatal — the server still starts with an
+// empty in-memory store in the unlikely event the DB is unreachable.
+await initSessionStore();
 
 app.listen(port, (err) => {
   if (err) {

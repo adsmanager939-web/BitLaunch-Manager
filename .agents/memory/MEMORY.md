@@ -1,0 +1,1 @@
+- [lib/db TypeScript composite build](lib-db-build.md) — changing lib/db schema requires `npx tsc -p lib/db/tsconfig.json` before api-server typecheck passes.
