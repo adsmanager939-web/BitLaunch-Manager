@@ -1,5 +1,6 @@
 import { useParams, Link, useLocation } from 'wouter';
 import { useState } from 'react';
+import { EndSessionDialog } from '@/components/end-session-dialog';
 import {
   useGetBitlaunchServer,
   getGetBitlaunchServerQueryKey,
@@ -167,6 +168,16 @@ export default function ServerDetail() {
         description="Full instance record as reported by the BitLaunch API."
         actions={
           <div className="flex items-center gap-2">
+            {server && (
+              <EndSessionDialog
+                serverId={id}
+                serverName={server.name}
+                onEnded={() => {
+                  queryClient.invalidateQueries({ queryKey: getListBitlaunchServersQueryKey() });
+                  setLocation('/servers');
+                }}
+              />
+            )}
             <Button
               variant="outline"
               size="sm"

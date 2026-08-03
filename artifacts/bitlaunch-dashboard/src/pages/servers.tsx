@@ -2,6 +2,7 @@ import { useListBitlaunchServers, useCreateBitlaunchServer, getListBitlaunchServ
 import { Link } from 'wouter';
 import { useState, useMemo } from 'react';
 import { Server, AlertTriangle, RefreshCw, Search, ArrowUpRight, MapPin, Cpu, Layers, Plus, Radio } from 'lucide-react';
+import { LaunchSessionDialog } from '@/components/launch-session-dialog';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -169,6 +170,7 @@ export default function Servers() {
         description="All provisioned compute instances across your regions."
         actions={
           <div className="flex items-center gap-2">
+            <LaunchSessionDialog />
             <CreateServerDialog />
             <Button
               variant="outline"
