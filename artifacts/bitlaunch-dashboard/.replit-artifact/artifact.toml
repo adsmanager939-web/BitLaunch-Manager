@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "BitLaunch Dashboard"
+description = "A web dashboard for managing BitLaunch servers, images, and volumes"
+version = "1.0.0"
+id = "artifacts/bitlaunch-dashboard"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24170
+
+[services.development]
+run = "pnpm --filter @workspace/bitlaunch-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bitlaunch-dashboard", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/bitlaunch-dashboard/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24170"
+BASE_PATH = "/"

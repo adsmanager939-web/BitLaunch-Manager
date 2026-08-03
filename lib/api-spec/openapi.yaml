@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: bitlaunch
+    description: BitLaunch infrastructure operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,145 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /bitlaunch/summary:
+    get:
+      operationId: getBitlaunchSummary
+      tags: [bitlaunch]
+      summary: Get account summary
+      description: Returns combined account info plus server/image/volume counts
+      responses:
+        "200":
+          description: Summary data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchSummary"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/account:
+    get:
+      operationId: getBitlaunchAccount
+      tags: [bitlaunch]
+      summary: Get account info
+      description: Returns BitLaunch account details
+      responses:
+        "200":
+          description: Account info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchAccount"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/servers:
+    get:
+      operationId: listBitlaunchServers
+      tags: [bitlaunch]
+      summary: List servers
+      description: Returns all BitLaunch servers
+      responses:
+        "200":
+          description: List of servers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BitlaunchServer"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/servers/{id}:
+    get:
+      operationId: getBitlaunchServer
+      tags: [bitlaunch]
+      summary: Get server details
+      description: Returns a specific BitLaunch server
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Server details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchServer"
+        "404":
+          description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/images:
+    get:
+      operationId: listBitlaunchImages
+      tags: [bitlaunch]
+      summary: List images
+      description: Returns all available BitLaunch images and snapshots
+      responses:
+        "200":
+          description: List of images
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BitlaunchImage"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/volumes:
+    get:
+      operationId: listBitlaunchVolumes
+      tags: [bitlaunch]
+      summary: List volumes
+      description: Returns all BitLaunch block storage volumes
+      responses:
+        "200":
+          description: List of volumes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BitlaunchVolume"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +175,99 @@ components:
       required:
         - status
 
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    BitlaunchSummary:
+      type: object
+      properties:
+        account:
+          $ref: "#/components/schemas/BitlaunchAccount"
+        serverCount:
+          type: integer
+        imageCount:
+          type: integer
+        volumeCount:
+          type: integer
+      required:
+        - account
+        - serverCount
+        - imageCount
+        - volumeCount
+
+    BitlaunchAccount:
+      type: object
+      properties:
+        email:
+          type: ["string", "null"]
+        balance:
+          type: ["number", "null"]
+        currency:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+      required: []
+
+    BitlaunchServer:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        ip:
+          type: ["string", "null"]
+        region:
+          type: ["string", "null"]
+        size:
+          type: ["string", "null"]
+        image:
+          type: ["string", "null"]
+        createdAt:
+          type: ["string", "null"]
+        costPerHour:
+          type: ["number", "null"]
+      required: []
+
+    BitlaunchImage:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        distribution:
+          type: ["string", "null"]
+        type:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        sizeGb:
+          type: ["number", "null"]
+      required: []
+
+    BitlaunchVolume:
+      type: object
+      properties:
+        id:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        status:
+          type: ["string", "null"]
+        sizeGb:
+          type: ["number", "null"]
+        region:
+          type: ["string", "null"]
+        attachedTo:
+          type: ["string", "null"]
+        createdAt:
+          type: ["string", "null"]
+      required: []
