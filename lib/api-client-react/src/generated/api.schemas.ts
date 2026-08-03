@@ -67,6 +67,10 @@ export interface BitlaunchImage {
   sizeGb?: number | null;
 }
 
+export interface SnapshotInput {
+  name: string;
+}
+
 export interface BitlaunchVolume {
   /** @nullable */
   id?: string | null;

@@ -1,7 +1,9 @@
-import { useParams, Link } from 'wouter';
+import { useParams, Link, useLocation } from 'wouter';
+import { useState } from 'react';
 import {
   useGetBitlaunchServer,
   getGetBitlaunchServerQueryKey,
+  useCreateBitlaunchSnapshot,
 } from '@workspace/api-client-react';
 import {
   ArrowLeft,
@@ -15,13 +17,85 @@ import {
   Network,
   AlertTriangle,
   RefreshCw,
+  Camera,
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/status-badge';
 import { formatCostPerHour, formatDate, fallback } from '@/lib/format';
+import { useToast } from '@/hooks/use-toast';
+
+function CreateSnapshotDialog({ serverId }: { serverId: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [snapshotName, setSnapshotName] = useState(`golden-image-v1`);
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+
+  const createSnapshot = useCreateBitlaunchSnapshot({
+    mutation: {
+      onSuccess: (data) => {
+        setIsOpen(false);
+        toast({
+          title: "Snapshot Created",
+          description: `Snapshot is now pending. ID: ${data.id}`,
+        });
+        setLocation(`/images?poll=${data.id}`);
+      },
+      onError: (err) => {
+        toast({
+          title: "Failed to create snapshot",
+          description: err.error || "An unknown error occurred",
+          variant: "destructive"
+        });
+      }
+    }
+  });
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" data-testid="button-create-snapshot">
+          <Camera className="mr-1.5 h-4 w-4" />
+          Create Snapshot
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Golden Image</DialogTitle>
+          <DialogDescription>
+            Capture the current state of this server as a reusable snapshot.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="snapshot-name">Snapshot Name</Label>
+            <Input
+              id="snapshot-name"
+              value={snapshotName}
+              onChange={(e) => setSnapshotName(e.target.value)}
+              placeholder="e.g. golden-image-v1"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={() => createSnapshot.mutate({ id: serverId, data: { name: snapshotName } })}
+            disabled={!snapshotName.trim() || createSnapshot.isPending}
+            data-testid="button-submit-snapshot"
+          >
+            {createSnapshot.isPending ? "Creating..." : "Create"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function ServerDetail() {
   const params = useParams<{ id: string }>();
@@ -49,16 +123,19 @@ export default function ServerDetail() {
         title={isLoading ? 'Loading server…' : fallback(server?.name, 'Unnamed Server')}
         description="Full instance record as reported by the BitLaunch API."
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            data-testid="button-refresh-server"
-          >
-            <RefreshCw className={isFetching ? 'animate-spin' : ''} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {server && <CreateSnapshotDialog serverId={id} />}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-refresh-server"
+            >
+              <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+              Refresh
+            </Button>
+          </div>
         }
       />
 

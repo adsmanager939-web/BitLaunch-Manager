@@ -86,6 +86,46 @@ export const GetBitlaunchServerResponse = zod.object({
 
 
 /**
+ * Creates a snapshot (golden image) from a running server
+ * @summary Create snapshot from server
+ */
+export const CreateBitlaunchSnapshotParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CreateBitlaunchSnapshotBody = zod.object({
+  "name": zod.string()
+})
+
+export const CreateBitlaunchSnapshotResponse = zod.object({
+  "id": zod.string().nullish(),
+  "name": zod.string().nullish(),
+  "distribution": zod.string().nullish(),
+  "type": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "sizeGb": zod.number().nullish()
+})
+
+
+/**
+ * Returns details and status of a specific image or snapshot
+ * @summary Get image/snapshot status
+ */
+export const GetBitlaunchImageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetBitlaunchImageResponse = zod.object({
+  "id": zod.string().nullish(),
+  "name": zod.string().nullish(),
+  "distribution": zod.string().nullish(),
+  "type": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "sizeGb": zod.number().nullish()
+})
+
+
+/**
  * Returns all available BitLaunch images and snapshots
  * @summary List images
  */

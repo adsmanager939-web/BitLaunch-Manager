@@ -6,11 +6,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
@@ -22,11 +26,12 @@ import type {
   BitlaunchServer,
   BitlaunchSummary,
   BitlaunchVolume,
-  HealthStatus
+  HealthStatus,
+  SnapshotInput
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -430,6 +435,157 @@ export function useGetBitlaunchServer<TData = Awaited<ReturnType<typeof getBitla
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetBitlaunchServerQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateBitlaunchSnapshotUrl = (id: string,) => {
+
+
+
+
+  return `/api/bitlaunch/servers/${id}/snapshot`
+}
+
+/**
+ * Creates a snapshot (golden image) from a running server
+ * @summary Create snapshot from server
+ */
+export const createBitlaunchSnapshot = async (id: string,
+    snapshotInput: SnapshotInput, options?: RequestInit): Promise<BitlaunchImage> => {
+
+  return customFetch<BitlaunchImage>(getCreateBitlaunchSnapshotUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(snapshotInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBitlaunchSnapshotMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchSnapshot>>, TError,{id: string;data: BodyType<SnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchSnapshot>>, TError,{id: string;data: BodyType<SnapshotInput>}, TContext> => {
+
+const mutationKey = ['createBitlaunchSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBitlaunchSnapshot>>, {id: string;data: BodyType<SnapshotInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createBitlaunchSnapshot(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBitlaunchSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof createBitlaunchSnapshot>>>
+    export type CreateBitlaunchSnapshotMutationBody = BodyType<SnapshotInput>
+    export type CreateBitlaunchSnapshotMutationError = ErrorType<ApiError>
+
+    /**
+ * @summary Create snapshot from server
+ */
+export const useCreateBitlaunchSnapshot = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchSnapshot>>, TError,{id: string;data: BodyType<SnapshotInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBitlaunchSnapshot>>,
+        TError,
+        {id: string;data: BodyType<SnapshotInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBitlaunchSnapshotMutationOptions(options));
+    }
+
+export const getGetBitlaunchImageUrl = (id: string,) => {
+
+
+
+
+  return `/api/bitlaunch/images/${id}`
+}
+
+/**
+ * Returns details and status of a specific image or snapshot
+ * @summary Get image/snapshot status
+ */
+export const getBitlaunchImage = async (id: string, options?: RequestInit): Promise<BitlaunchImage> => {
+
+  return customFetch<BitlaunchImage>(getGetBitlaunchImageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetBitlaunchImageQueryKey = (id: string,) => {
+    return [
+    `/api/bitlaunch/images/${id}`
+    ] as const;
+    }
+
+
+export const getGetBitlaunchImageQueryOptions = <TData = Awaited<ReturnType<typeof getBitlaunchImage>>, TError = ErrorType<ApiError>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBitlaunchImage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetBitlaunchImageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getBitlaunchImage>>> = ({ signal }) => getBitlaunchImage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getBitlaunchImage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetBitlaunchImageQueryResult = NonNullable<Awaited<ReturnType<typeof getBitlaunchImage>>>
+export type GetBitlaunchImageQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get image/snapshot status
+ */
+
+export function useGetBitlaunchImage<TData = Awaited<ReturnType<typeof getBitlaunchImage>>, TError = ErrorType<ApiError>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getBitlaunchImage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetBitlaunchImageQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

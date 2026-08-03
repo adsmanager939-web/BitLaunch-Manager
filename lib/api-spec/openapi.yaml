@@ -121,6 +121,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  /bitlaunch/servers/{id}/snapshot:
+    post:
+      operationId: createBitlaunchSnapshot
+      tags: [bitlaunch]
+      summary: Create snapshot from server
+      description: Creates a snapshot (golden image) from a running server
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SnapshotInput"
+      responses:
+        "200":
+          description: Snapshot creation started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchImage"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/images/{id}:
+    get:
+      operationId: getBitlaunchImage
+      tags: [bitlaunch]
+      summary: Get image/snapshot status
+      description: Returns details and status of a specific image or snapshot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchImage"
+        "404":
+          description: Image not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
   /bitlaunch/images:
     get:
       operationId: listBitlaunchImages
@@ -252,6 +316,14 @@ components:
         sizeGb:
           type: ["number", "null"]
       required: []
+
+    SnapshotInput:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
 
     BitlaunchVolume:
       type: object

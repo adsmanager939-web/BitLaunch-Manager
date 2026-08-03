@@ -4,6 +4,11 @@ import {
   GetBitlaunchSummaryResponse,
   GetBitlaunchServerParams,
   GetBitlaunchServerResponse,
+  CreateBitlaunchSnapshotParams,
+  CreateBitlaunchSnapshotBody,
+  CreateBitlaunchSnapshotResponse,
+  GetBitlaunchImageParams,
+  GetBitlaunchImageResponse,
   ListBitlaunchImagesResponse,
   ListBitlaunchServersResponse,
   ListBitlaunchVolumesResponse,
@@ -150,6 +155,59 @@ router.get("/bitlaunch/servers/:id", async (req, res): Promise<void> => {
     res.json(GetBitlaunchServerResponse.parse(normalizeServer(raw)));
   } catch (err) {
     req.log.error({ err }, "Failed to fetch BitLaunch server");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/bitlaunch/servers/:id/snapshot", async (req, res): Promise<void> => {
+  if (!BITLAUNCH_API_KEY) {
+    res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
+    return;
+  }
+  const params = CreateBitlaunchSnapshotParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const body = CreateBitlaunchSnapshotBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  try {
+    const raw = (await (await fetch(`${BASE_URL}/servers/${params.data.id}/snapshot`, {
+      method: "POST",
+      headers: bitlaunchHeaders(),
+      body: JSON.stringify({ name: body.data.name }),
+    }).then(async (r) => {
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`BitLaunch API error ${r.status}: ${text}`);
+      }
+      return r.json();
+    })) as Record<string, unknown>);
+    res.json(CreateBitlaunchSnapshotResponse.parse(normalizeImage(raw)));
+  } catch (err) {
+    req.log.error({ err }, "Failed to create BitLaunch snapshot");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.get("/bitlaunch/images/:id", async (req, res): Promise<void> => {
+  if (!BITLAUNCH_API_KEY) {
+    res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
+    return;
+  }
+  const params = GetBitlaunchImageParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  try {
+    const raw = (await bitlaunchFetch(`/images/${params.data.id}`)) as Record<string, unknown>;
+    res.json(GetBitlaunchImageResponse.parse(normalizeImage(raw)));
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch BitLaunch image");
     res.status(500).json({ error: String(err) });
   }
 });
