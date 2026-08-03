@@ -9,6 +9,7 @@ import {
   Radio,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BalanceBadge } from './balance-badge';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard', icon: Gauge, testId: 'dashboard' },
@@ -69,11 +70,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        <div className="px-5 py-4 border-t border-sidebar-border">
+        <div className="px-5 py-4 border-t border-sidebar-border space-y-1.5">
           <div className="flex items-center gap-2 text-[11px] font-mono-num text-muted-foreground">
             <Radio className="h-3 w-3 text-[hsl(152,65%,55%)]" />
             <span>API link nominal</span>
           </div>
+          <BalanceBadge />
         </div>
       </aside>
 

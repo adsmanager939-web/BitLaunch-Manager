@@ -16,6 +16,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import supertest from "supertest";
 import type { Server } from "node:http";
+import { db, sessionsTable } from "@workspace/db";
+import { inArray } from "drizzle-orm";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("sessions.cleanup.test.ts requires SESSION_SECRET");
@@ -112,6 +114,9 @@ let server: Server;
 let agent: ReturnType<typeof supertest>;
 let sessionCookie = "";
 
+/** Collects session IDs created during this test run for DB cleanup. */
+const testSessionIds: string[] = [];
+
 before(async () => {
   const { default: app } = await import("../app.js");
   server = app.listen(0);
@@ -128,7 +133,15 @@ before(async () => {
   assert.ok(sessionCookie, "Expected a session cookie after login");
 });
 
-after(() => {
+after(async () => {
+  // Remove test sessions from the DB so they don't get reloaded on
+  // next server startup (Task #14).
+  if (testSessionIds.length > 0) {
+    await db
+      .delete(sessionsTable)
+      .where(inArray(sessionsTable.sessionId, testSessionIds))
+      .catch((err: unknown) => console.error("DB cleanup failed:", err));
+  }
   server?.close();
   (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
 });

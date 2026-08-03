@@ -13,6 +13,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import supertest from "supertest";
 import type { Server } from "node:http";
+import { db, sessionsTable } from "@workspace/db";
+import { inArray } from "drizzle-orm";
 
 if (!process.env.SESSION_SECRET) {
   throw new Error("sessions.payload.test.ts requires SESSION_SECRET to be set");
@@ -89,13 +91,24 @@ const originalFetch = globalThis.fetch;
 let server: Server;
 let agent: ReturnType<typeof supertest>;
 
+/** Collects session IDs created during this test run for DB cleanup. */
+const testSessionIds: string[] = [];
+
 before(async () => {
   const { default: app } = await import("../app.js");
   server = app.listen(0);
   agent = supertest(server);
 });
 
-after(() => {
+after(async () => {
+  // Remove test sessions from the DB so they don't get loaded into the
+  // in-memory store on the next server startup (Task #14).
+  if (testSessionIds.length > 0) {
+    await db
+      .delete(sessionsTable)
+      .where(inArray(sessionsTable.sessionId, testSessionIds))
+      .catch((err: unknown) => console.error("DB cleanup failed:", err));
+  }
   server?.close();
   (globalThis as { fetch: typeof fetch }).fetch = originalFetch;
 });
@@ -127,6 +140,7 @@ test("POST /api/sessions/launch sends image (not snapshotId) in the BitLaunch se
     });
   assert.equal(launchRes.status, 202, "Launch should be accepted (202)");
   assert.ok(launchRes.body.sessionId, "Response should include a sessionId");
+  testSessionIds.push(launchRes.body.sessionId as string);
 
   // Wait for the async BitLaunch POST /servers call (max 5 seconds)
   const creationCall = await Promise.race([
