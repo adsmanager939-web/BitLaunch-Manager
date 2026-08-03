@@ -1,7 +1,7 @@
 import { useListBitlaunchServers, useCreateBitlaunchServer, getListBitlaunchServersQueryKey } from '@workspace/api-client-react';
 import { Link } from 'wouter';
 import { useState, useMemo } from 'react';
-import { Server, AlertTriangle, RefreshCw, Search, ArrowUpRight, MapPin, Cpu, Layers, Plus } from 'lucide-react';
+import { Server, AlertTriangle, RefreshCw, Search, ArrowUpRight, MapPin, Cpu, Layers, Plus, Radio } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -145,7 +145,9 @@ function CreateServerDialog() {
 }
 
 export default function Servers() {
-  const { data: servers, isLoading, isError, refetch, isFetching } = useListBitlaunchServers();
+  const { data: servers, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useListBitlaunchServers({
+    query: { queryKey: getListBitlaunchServersQueryKey(), refetchInterval: 15_000 },
+  });
   const [query, setQuery] = useState('');
 
   const filtered = useMemo(() => {
@@ -333,9 +335,18 @@ export default function Servers() {
               ))}
             </div>
 
-            <div className="text-xs text-muted-foreground font-mono-num flex items-center gap-1.5">
-              <ArrowUpRight className="h-3 w-3" />
-              {filtered.length} of {servers?.length ?? 0} servers shown
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div className="text-xs text-muted-foreground font-mono-num flex items-center gap-1.5">
+                <ArrowUpRight className="h-3 w-3" />
+                {filtered.length} of {servers?.length ?? 0} servers shown
+              </div>
+              {dataUpdatedAt > 0 && (
+                <div className="text-xs text-muted-foreground font-mono-num flex items-center gap-1.5" data-testid="text-last-updated-servers">
+                  <Radio className="h-3 w-3 text-primary" />
+                  Updated {new Date(dataUpdatedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  <span className="text-muted-foreground/50">· auto-refreshes every 15s</span>
+                </div>
+              )}
             </div>
           </>
         ) : null}

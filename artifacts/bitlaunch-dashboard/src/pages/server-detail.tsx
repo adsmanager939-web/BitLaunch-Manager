@@ -23,7 +23,8 @@ import {
   RefreshCw,
   Camera,
   Trash2,
-  Power
+  Power,
+  Radio
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -111,8 +112,15 @@ export default function ServerDetail() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: server, isLoading, isError, refetch, isFetching } = useGetBitlaunchServer(id, {
-    query: { enabled: !!id, queryKey: getGetBitlaunchServerQueryKey(id) },
+  const { data: server, isLoading, isError, refetch, isFetching, dataUpdatedAt } = useGetBitlaunchServer(id, {
+    query: {
+      enabled: !!id,
+      queryKey: getGetBitlaunchServerQueryKey(id),
+      refetchInterval: (query) => {
+        const status = (query.state.data as { status?: string | null } | undefined)?.status?.toLowerCase() ?? '';
+        return status === 'active' ? false : 5_000;
+      },
+    },
   });
 
   const rebootServer = useRebootBitlaunchServer({
@@ -255,6 +263,16 @@ export default function ServerDetail() {
                 <StatusBadge status={server.status} />
               </CardContent>
             </Card>
+
+            {dataUpdatedAt > 0 && (
+              <div className="text-xs text-muted-foreground font-mono-num flex items-center gap-1.5" data-testid="text-last-updated-server">
+                <Radio className="h-3 w-3 text-primary" />
+                Updated {new Date(dataUpdatedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                {server?.status?.toLowerCase() !== 'active' && (
+                  <span className="text-muted-foreground/50">· polling every 5s until active</span>
+                )}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <DetailField icon={Network} label="IP Address" value={fallback(server.ip)} mono testId="ip" />
