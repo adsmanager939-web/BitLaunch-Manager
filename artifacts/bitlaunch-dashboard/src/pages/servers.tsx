@@ -1,12 +1,16 @@
-import { useListBitlaunchServers } from '@workspace/api-client-react';
+import { useListBitlaunchServers, useCreateBitlaunchServer, getListBitlaunchServersQueryKey } from '@workspace/api-client-react';
 import { Link } from 'wouter';
 import { useState, useMemo } from 'react';
-import { Server, AlertTriangle, RefreshCw, Search, ArrowUpRight, MapPin, Cpu, Layers } from 'lucide-react';
+import { Server, AlertTriangle, RefreshCw, Search, ArrowUpRight, MapPin, Cpu, Layers, Plus } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 import { StatusBadge } from '@/components/status-badge';
 import {
   Empty,
@@ -24,6 +28,121 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { formatCostPerHour, fallback } from '@/lib/format';
+
+function CreateServerDialog() {
+  const [isOpen, setIsOpen] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [formData, setFormData] = useState({ name: '', provider: '', region: '', plan: '', image: '' });
+
+  const createServer = useCreateBitlaunchServer({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: 'Server Created', description: 'Server provisioning initiated successfully.' });
+        setIsOpen(false);
+        setFormData({ name: '', provider: '', region: '', plan: '', image: '' });
+        queryClient.invalidateQueries({ queryKey: getListBitlaunchServersQueryKey() });
+      },
+      onError: (err) => {
+        toast({
+          title: 'Failed to create server',
+          description: err.data?.error || err.message || 'An unknown error occurred',
+          variant: 'destructive',
+        });
+      },
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createServer.mutate({ data: formData });
+  };
+
+  const isFormValid = formData.name && formData.provider && formData.region && formData.plan && formData.image;
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" data-testid="button-create-server">
+          <Plus className="mr-1.5 h-4 w-4" />
+          Create Server
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create Server</DialogTitle>
+          <DialogDescription>Provision a new compute instance.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="server-name">Name</Label>
+              <Input
+                id="server-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. web-node-01"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="server-provider">Provider</Label>
+              <Input
+                id="server-provider"
+                value={formData.provider}
+                onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
+                placeholder="e.g. digitalocean"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="server-region">Region</Label>
+              <Input
+                id="server-region"
+                value={formData.region}
+                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
+                placeholder="e.g. nyc1"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="server-plan">Plan</Label>
+              <Input
+                id="server-plan"
+                value={formData.plan}
+                onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
+                placeholder="e.g. s-1vcpu-1gb"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="server-image">Image</Label>
+              <Input
+                id="server-image"
+                value={formData.image}
+                onChange={(e) => setFormData({ ...formData, image: e.target.value })}
+                placeholder="e.g. ubuntu-22-04-x64"
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={!isFormValid || createServer.isPending}
+              data-testid="button-submit-server"
+            >
+              {createServer.isPending ? 'Creating...' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export default function Servers() {
   const { data: servers, isLoading, isError, refetch, isFetching } = useListBitlaunchServers();
@@ -47,16 +166,19 @@ export default function Servers() {
         title="Servers"
         description="All provisioned compute instances across your regions."
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => refetch()}
-            disabled={isFetching}
-            data-testid="button-refresh-servers"
-          >
-            <RefreshCw className={isFetching ? 'animate-spin' : ''} />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            <CreateServerDialog />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              data-testid="button-refresh-servers"
+            >
+              <RefreshCw className={isFetching ? 'animate-spin' : ''} />
+              Refresh
+            </Button>
+          </div>
         }
       />
 

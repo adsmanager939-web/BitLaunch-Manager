@@ -4,7 +4,11 @@ import {
   useGetBitlaunchServer,
   getGetBitlaunchServerQueryKey,
   useCreateBitlaunchSnapshot,
+  useRebootBitlaunchServer,
+  useDestroyBitlaunchServer,
+  getListBitlaunchServersQueryKey
 } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
   Server,
@@ -18,12 +22,15 @@ import {
   AlertTriangle,
   RefreshCw,
   Camera,
+  Trash2,
+  Power
 } from 'lucide-react';
 import { PageHeader } from '@/components/layout/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { StatusBadge } from '@/components/status-badge';
@@ -49,7 +56,7 @@ function CreateSnapshotDialog({ serverId }: { serverId: string }) {
       onError: (err) => {
         toast({
           title: "Failed to create snapshot",
-          description: err.error || "An unknown error occurred",
+          description: err.data?.error || err.message || "An unknown error occurred",
           variant: "destructive"
         });
       }
@@ -100,9 +107,37 @@ function CreateSnapshotDialog({ serverId }: { serverId: string }) {
 export default function ServerDetail() {
   const params = useParams<{ id: string }>();
   const id = params.id ?? '';
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: server, isLoading, isError, refetch, isFetching } = useGetBitlaunchServer(id, {
     query: { enabled: !!id, queryKey: getGetBitlaunchServerQueryKey(id) },
+  });
+
+  const rebootServer = useRebootBitlaunchServer({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: 'Reboot initiated', description: 'Server is rebooting.' });
+        refetch();
+      },
+      onError: (err) => {
+        toast({ title: 'Failed to reboot', description: err.data?.error || err.message || 'Unknown error occurred', variant: 'destructive' });
+      },
+    },
+  });
+
+  const destroyServer = useDestroyBitlaunchServer({
+    mutation: {
+      onSuccess: () => {
+        toast({ title: 'Server destroyed', description: 'The server has been permanently deleted.' });
+        queryClient.invalidateQueries({ queryKey: getListBitlaunchServersQueryKey() });
+        setLocation('/servers');
+      },
+      onError: (err) => {
+        toast({ title: 'Failed to destroy', description: err.data?.error || err.message || 'Unknown error occurred', variant: 'destructive' });
+      },
+    },
   });
 
   return (
@@ -124,6 +159,16 @@ export default function ServerDetail() {
         description="Full instance record as reported by the BitLaunch API."
         actions={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => rebootServer.mutate({ id })}
+              disabled={rebootServer.isPending || !server}
+              data-testid="button-reboot-server"
+            >
+              <Power className="mr-1.5 h-4 w-4" />
+              Reboot
+            </Button>
             {server && <CreateSnapshotDialog serverId={id} />}
             <Button
               variant="outline"
@@ -135,6 +180,33 @@ export default function ServerDetail() {
               <RefreshCw className={isFetching ? 'animate-spin' : ''} />
               Refresh
             </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={!server} data-testid="button-destroy-server">
+                  <Trash2 className="mr-1.5 h-4 w-4" />
+                  Destroy
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently destroy the server <strong className="text-foreground">{fallback(server?.name)}</strong>. 
+                    All data on this server will be lost. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction 
+                    onClick={() => destroyServer.mutate({ id })}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    disabled={destroyServer.isPending}
+                  >
+                    {destroyServer.isPending ? 'Destroying...' : 'Yes, destroy server'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         }
       />

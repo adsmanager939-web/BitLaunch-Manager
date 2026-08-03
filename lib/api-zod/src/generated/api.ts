@@ -65,6 +65,42 @@ export const ListBitlaunchServersResponse = zod.array(ListBitlaunchServersRespon
 
 
 /**
+ * Provisions a new server on BitLaunch
+ * @summary Create a server
+ */
+export const CreateBitlaunchServerBody = zod.object({
+  "name": zod.string(),
+  "provider": zod.string(),
+  "region": zod.string(),
+  "plan": zod.string(),
+  "image": zod.string()
+})
+
+export const CreateBitlaunchServerResponse = zod.object({
+  "id": zod.string().nullish(),
+  "name": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "ip": zod.string().nullish(),
+  "region": zod.string().nullish(),
+  "size": zod.string().nullish(),
+  "image": zod.string().nullish(),
+  "createdAt": zod.string().nullish(),
+  "costPerHour": zod.number().nullish()
+})
+
+
+/**
+ * Permanently destroys a server
+ * @summary Destroy a server
+ */
+export const DestroyBitlaunchServerParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DestroyBitlaunchServerResponse = zod.void()
+
+
+/**
  * Returns a specific BitLaunch server
  * @summary Get server details
  */
@@ -73,6 +109,27 @@ export const GetBitlaunchServerParams = zod.object({
 })
 
 export const GetBitlaunchServerResponse = zod.object({
+  "id": zod.string().nullish(),
+  "name": zod.string().nullish(),
+  "status": zod.string().nullish(),
+  "ip": zod.string().nullish(),
+  "region": zod.string().nullish(),
+  "size": zod.string().nullish(),
+  "image": zod.string().nullish(),
+  "createdAt": zod.string().nullish(),
+  "costPerHour": zod.number().nullish()
+})
+
+
+/**
+ * Triggers a hard reboot on a server
+ * @summary Reboot a server
+ */
+export const RebootBitlaunchServerParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RebootBitlaunchServerResponse = zod.object({
   "id": zod.string().nullish(),
   "name": zod.string().nullish(),
   "status": zod.string().nullish(),

@@ -27,6 +27,7 @@ import type {
   BitlaunchSummary,
   BitlaunchVolume,
   HealthStatus,
+  ServerInput,
   SnapshotInput
 } from './api.schemas';
 
@@ -369,6 +370,150 @@ export function useListBitlaunchServers<TData = Awaited<ReturnType<typeof listBi
 
 
 
+export const getCreateBitlaunchServerUrl = () => {
+
+
+
+
+  return `/api/bitlaunch/servers`
+}
+
+/**
+ * Provisions a new server on BitLaunch
+ * @summary Create a server
+ */
+export const createBitlaunchServer = async (serverInput: ServerInput, options?: RequestInit): Promise<BitlaunchServer> => {
+
+  return customFetch<BitlaunchServer>(getCreateBitlaunchServerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(serverInput)
+  }
+);}
+
+
+
+
+
+export const getCreateBitlaunchServerMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchServer>>, TError,{data: BodyType<ServerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchServer>>, TError,{data: BodyType<ServerInput>}, TContext> => {
+
+const mutationKey = ['createBitlaunchServer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBitlaunchServer>>, {data: BodyType<ServerInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createBitlaunchServer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBitlaunchServerMutationResult = NonNullable<Awaited<ReturnType<typeof createBitlaunchServer>>>
+    export type CreateBitlaunchServerMutationBody = BodyType<ServerInput>
+    export type CreateBitlaunchServerMutationError = ErrorType<ApiError>
+
+    /**
+ * @summary Create a server
+ */
+export const useCreateBitlaunchServer = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBitlaunchServer>>, TError,{data: BodyType<ServerInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBitlaunchServer>>,
+        TError,
+        {data: BodyType<ServerInput>},
+        TContext
+      > => {
+      return useMutation(getCreateBitlaunchServerMutationOptions(options));
+    }
+
+export const getDestroyBitlaunchServerUrl = (id: string,) => {
+
+
+
+
+  return `/api/bitlaunch/servers/${id}`
+}
+
+/**
+ * Permanently destroys a server
+ * @summary Destroy a server
+ */
+export const destroyBitlaunchServer = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDestroyBitlaunchServerUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDestroyBitlaunchServerMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof destroyBitlaunchServer>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof destroyBitlaunchServer>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['destroyBitlaunchServer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof destroyBitlaunchServer>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  destroyBitlaunchServer(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DestroyBitlaunchServerMutationResult = NonNullable<Awaited<ReturnType<typeof destroyBitlaunchServer>>>
+
+    export type DestroyBitlaunchServerMutationError = ErrorType<ApiError>
+
+    /**
+ * @summary Destroy a server
+ */
+export const useDestroyBitlaunchServer = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof destroyBitlaunchServer>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof destroyBitlaunchServer>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDestroyBitlaunchServerMutationOptions(options));
+    }
+
 export const getGetBitlaunchServerUrl = (id: string,) => {
 
 
@@ -446,6 +591,78 @@ export function useGetBitlaunchServer<TData = Awaited<ReturnType<typeof getBitla
 
 
 
+
+export const getRebootBitlaunchServerUrl = (id: string,) => {
+
+
+
+
+  return `/api/bitlaunch/servers/${id}/reboot`
+}
+
+/**
+ * Triggers a hard reboot on a server
+ * @summary Reboot a server
+ */
+export const rebootBitlaunchServer = async (id: string, options?: RequestInit): Promise<BitlaunchServer> => {
+
+  return customFetch<BitlaunchServer>(getRebootBitlaunchServerUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRebootBitlaunchServerMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rebootBitlaunchServer>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rebootBitlaunchServer>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['rebootBitlaunchServer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rebootBitlaunchServer>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  rebootBitlaunchServer(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RebootBitlaunchServerMutationResult = NonNullable<Awaited<ReturnType<typeof rebootBitlaunchServer>>>
+
+    export type RebootBitlaunchServerMutationError = ErrorType<ApiError>
+
+    /**
+ * @summary Reboot a server
+ */
+export const useRebootBitlaunchServer = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rebootBitlaunchServer>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rebootBitlaunchServer>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRebootBitlaunchServerMutationOptions(options));
+    }
 
 export const getCreateBitlaunchSnapshotUrl = (id: string,) => {
 

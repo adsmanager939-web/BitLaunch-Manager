@@ -4,6 +4,11 @@ import {
   GetBitlaunchSummaryResponse,
   GetBitlaunchServerParams,
   GetBitlaunchServerResponse,
+  CreateBitlaunchServerBody,
+  CreateBitlaunchServerResponse,
+  DestroyBitlaunchServerParams,
+  RebootBitlaunchServerParams,
+  RebootBitlaunchServerResponse,
   CreateBitlaunchSnapshotParams,
   CreateBitlaunchSnapshotBody,
   CreateBitlaunchSnapshotResponse,
@@ -24,15 +29,27 @@ function bitlaunchHeaders() {
   };
 }
 
-async function bitlaunchFetch(path: string): Promise<unknown> {
+async function bitlaunchRequest(
+  path: string,
+  method: "GET" | "POST" | "DELETE" = "GET",
+  body?: unknown,
+): Promise<unknown> {
   const res = await fetch(`${BASE_URL}${path}`, {
+    method,
     headers: bitlaunchHeaders(),
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
+  if (method === "DELETE" && res.status === 204) return null;
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`BitLaunch API error ${res.status}: ${text}`);
   }
+  if (res.status === 204) return null;
   return res.json();
+}
+
+async function bitlaunchFetch(path: string): Promise<unknown> {
+  return bitlaunchRequest(path, "GET");
 }
 
 /** Normalize raw BitLaunch server object to our schema */
@@ -159,6 +176,63 @@ router.get("/bitlaunch/servers/:id", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/bitlaunch/servers", async (req, res): Promise<void> => {
+  if (!BITLAUNCH_API_KEY) {
+    res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
+    return;
+  }
+  const body = CreateBitlaunchServerBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+  try {
+    const raw = (await bitlaunchRequest("/servers", "POST", body.data)) as Record<string, unknown>;
+    res.status(201).json(CreateBitlaunchServerResponse.parse(normalizeServer(raw)));
+  } catch (err) {
+    req.log.error({ err }, "Failed to create BitLaunch server");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.delete("/bitlaunch/servers/:id", async (req, res): Promise<void> => {
+  if (!BITLAUNCH_API_KEY) {
+    res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
+    return;
+  }
+  const params = DestroyBitlaunchServerParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  try {
+    await bitlaunchRequest(`/servers/${params.data.id}`, "DELETE");
+    res.sendStatus(204);
+  } catch (err) {
+    req.log.error({ err }, "Failed to destroy BitLaunch server");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+router.post("/bitlaunch/servers/:id/reboot", async (req, res): Promise<void> => {
+  if (!BITLAUNCH_API_KEY) {
+    res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
+    return;
+  }
+  const params = RebootBitlaunchServerParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  try {
+    const raw = (await bitlaunchRequest(`/servers/${params.data.id}/reboot`, "POST")) as Record<string, unknown>;
+    res.json(RebootBitlaunchServerResponse.parse(normalizeServer(raw ?? {})));
+  } catch (err) {
+    req.log.error({ err }, "Failed to reboot BitLaunch server");
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 router.post("/bitlaunch/servers/:id/snapshot", async (req, res): Promise<void> => {
   if (!BITLAUNCH_API_KEY) {
     res.status(500).json({ error: "BITLAUNCH_API_KEY is not configured" });
@@ -175,17 +249,11 @@ router.post("/bitlaunch/servers/:id/snapshot", async (req, res): Promise<void> =
     return;
   }
   try {
-    const raw = (await (await fetch(`${BASE_URL}/servers/${params.data.id}/snapshot`, {
-      method: "POST",
-      headers: bitlaunchHeaders(),
-      body: JSON.stringify({ name: body.data.name }),
-    }).then(async (r) => {
-      if (!r.ok) {
-        const text = await r.text();
-        throw new Error(`BitLaunch API error ${r.status}: ${text}`);
-      }
-      return r.json();
-    })) as Record<string, unknown>);
+    const raw = (await bitlaunchRequest(
+      `/servers/${params.data.id}/snapshot`,
+      "POST",
+      { name: body.data.name },
+    )) as Record<string, unknown>;
     res.json(CreateBitlaunchSnapshotResponse.parse(normalizeImage(raw)));
   } catch (err) {
     req.log.error({ err }, "Failed to create BitLaunch snapshot");

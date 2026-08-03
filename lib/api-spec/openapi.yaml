@@ -88,8 +88,64 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createBitlaunchServer
+      tags: [bitlaunch]
+      summary: Create a server
+      description: Provisions a new server on BitLaunch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ServerInput"
+      responses:
+        "201":
+          description: Server created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchServer"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /bitlaunch/servers/{id}:
+    delete:
+      operationId: destroyBitlaunchServer
+      tags: [bitlaunch]
+      summary: Destroy a server
+      description: Permanently destroys a server
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Server destroyed
+        "400":
+          description: Invalid path parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
     get:
       operationId: getBitlaunchServer
       tags: [bitlaunch]
@@ -110,6 +166,38 @@ paths:
                 $ref: "#/components/schemas/BitlaunchServer"
         "404":
           description: Server not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: BitLaunch API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /bitlaunch/servers/{id}/reboot:
+    post:
+      operationId: rebootBitlaunchServer
+      tags: [bitlaunch]
+      summary: Reboot a server
+      description: Triggers a hard reboot on a server
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reboot initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BitlaunchServer"
+        "400":
+          description: Invalid path parameter
           content:
             application/json:
               schema:
@@ -316,6 +404,26 @@ components:
         sizeGb:
           type: ["number", "null"]
       required: []
+
+    ServerInput:
+      type: object
+      properties:
+        name:
+          type: string
+        provider:
+          type: string
+        region:
+          type: string
+        plan:
+          type: string
+        image:
+          type: string
+      required:
+        - name
+        - provider
+        - region
+        - plan
+        - image
 
     SnapshotInput:
       type: object

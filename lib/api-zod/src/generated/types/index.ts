@@ -13,4 +13,5 @@ export * from './bitlaunchServer';
 export * from './bitlaunchSummary';
 export * from './bitlaunchVolume';
 export * from './healthStatus';
+export * from './serverInput';
 export * from './snapshotInput';

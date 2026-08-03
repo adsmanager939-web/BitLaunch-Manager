@@ -67,6 +67,14 @@ export interface BitlaunchImage {
   sizeGb?: number | null;
 }
 
+export interface ServerInput {
+  name: string;
+  provider: string;
+  region: string;
+  plan: string;
+  image: string;
+}
+
 export interface SnapshotInput {
   name: string;
 }
