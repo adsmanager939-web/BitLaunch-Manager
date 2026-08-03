@@ -1,0 +1,75 @@
+import requests
+import os
+import datetime
+import time
+
+API_KEY = os.environ.get("BITLAUNCH_API_KEY")
+BASE_URL = "https://api.bitlaunch.io/v1"
+
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# In real use, this would come from your database of user shifts.
+# For now, a simple in-memory example list:
+SHIFTS = [
+    {"user_id": "test-user-1", "snapshot_id": "YOUR_SNAPSHOT_ID", "start": "09:00", "end": "17:00", "server_id": None}
+]
+
+def start_shift(shift):
+    """Create a server for this user's shift"""
+    print(f"Starting shift for {shift['user_id']}...")
+    payload = {
+        "name": f"rdp-{shift['user_id']}",
+        "image": shift["snapshot_id"],
+        "region": "nyc1",
+        "size": "s-2vcpu-4gb"
+    }
+    r = requests.post(f"{BASE_URL}/servers", headers=headers, json=payload)
+    print(r.status_code, r.text)
+    if r.status_code in (200, 201):
+        data = r.json()
+        shift["server_id"] = data.get("id")
+        print(f"Server created: {shift['server_id']}")
+    return shift
+
+def end_shift(shift):
+    """Sync files back, revoke VPN, then destroy the server"""
+    if not shift.get("server_id"):
+        print(f"No active server for {shift['user_id']}, skipping.")
+        return
+
+    print(f"Ending shift for {shift['user_id']}, destroying server {shift['server_id']}...")
+    # NOTE: call your sync_up() and revoke_peer() here before destroying, once wired up
+    r = requests.delete(f"{BASE_URL}/servers/{shift['server_id']}", headers=headers)
+    print(r.status_code, r.text)
+    if r.status_code in (200, 204):
+        shift["server_id"] = None
+        print("Server destroyed.")
+
+def force_destroy_overdue(shift, grace_minutes=15):
+    """Safety net: destroy any server that outlived its shift end + grace period"""
+    now = datetime.datetime.now().strftime("%H:%M")
+    end_time = shift["end"]
+    if shift.get("server_id") and now > end_time:
+        print(f"Server for {shift['user_id']} is overdue past {end_time}, force destroying...")
+        end_shift(shift)
+
+def run_scheduler_loop(check_interval_seconds=60):
+    """Main loop: checks all shifts every interval, starts/ends as needed"""
+    print("Scheduler running. Checking shifts every", check_interval_seconds, "seconds.")
+    while True:
+        now = datetime.datetime.now().strftime("%H:%M")
+        for shift in SHIFTS:
+            if now == shift["start"] and not shift.get("server_id"):
+                start_shift(shift)
+            elif now == shift["end"] and shift.get("server_id"):
+                end_shift(shift)
+            else:
+                force_destroy_overdue(shift)
+        time.sleep(check_interval_seconds)
+
+if __name__ == "__main__":
+    print("Uncomment run_scheduler_loop() to start the scheduling loop.")
+    # run_scheduler_loop()
